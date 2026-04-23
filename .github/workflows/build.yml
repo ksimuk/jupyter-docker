@@ -8,10 +8,8 @@ on:
         type: string
 
 env:
-  AWS_REGION: us-east-1
-  REPOSITORY_NAME: jupyter-docker
-  IMAGE_NAME: codio/codio-jupyter
-  ECR_REGISTRY: public.ecr.aws/o0g3m8o6
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -26,20 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@main
-        with:
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::878986216776:role/Github/GithubECRPublicUploadRole_${{ env.REPOSITORY_NAME }}
-          role-session-name: GithubAction
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-        with:
-          registry-type: public
-
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -50,7 +34,7 @@ jobs:
       - name: Set image tags
         id: meta
         run: |
-          ECR_REGISTRY="${{ env.ECR_REGISTRY }}"
+          REGISTRY="${{ env.REGISTRY }}"
           SHA_SHORT=${{ inputs.prefix }}-$(echo ${{ github.sha }} | cut -c1-7)
 
           if [ "${{ github.event_name }}" == "pull_request" ]; then
@@ -61,14 +45,14 @@ jobs:
             echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
           fi
 
-          echo "ecr_registry=${ECR_REGISTRY}" >> $GITHUB_OUTPUT
+          echo "registry=${REGISTRY}" >> $GITHUB_OUTPUT
           echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
 
-          TAGS="${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG},${ECR_REGISTRY}/${IMAGE_NAME}:${SHA_SHORT}"
+          TAGS="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG},${REGISTRY}/${IMAGE_NAME}:${SHA_SHORT}"
 
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            TAGS="${TAGS},${ECR_REGISTRY}/${IMAGE_NAME}:${TIMESTAMP}"
+            TAGS="${TAGS},${REGISTRY}/${IMAGE_NAME}:${TIMESTAMP}"
           fi
 
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
@@ -81,8 +65,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           builder: ga-builder
-          cache-from: type=registry,ref=${{ steps.meta.outputs.ecr_registry }}/${{ env.IMAGE_NAME }}:cache
-          cache-to: type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${{ steps.meta.outputs.ecr_registry }}/${{ env.IMAGE_NAME }}:cache
+          cache-from: type=registry,ref=${{ steps.meta.outputs.registry }}/${{ env.IMAGE_NAME }}:cache
+          cache-to: type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${{ steps.meta.outputs.registry }}/${{ env.IMAGE_NAME }}:cache
 
       - name: Image summary
         run: |
@@ -90,7 +74,7 @@ jobs:
             echo "### Docker Image Published :rocket:"
             echo "event name: ${{ github.event_name }}"
             echo ""
-            echo "**Registry:** ${{ steps.meta.outputs.ecr_registry }}"
+            echo "**Registry:** ${{ steps.meta.outputs.registry }}"
             echo "**Image:** ${IMAGE_NAME}"
             echo ""
             echo "**Tags:**"
@@ -100,6 +84,6 @@ jobs:
             echo ""
             echo "**Pull command:**"
             echo "\`\`\`bash"
-            echo "docker pull ${{ steps.meta.outputs.ecr_registry }}/${IMAGE_NAME}:${{ steps.meta.outputs.image_tag }}"
+            echo "docker pull ${{ steps.meta.outputs.registry }}/${IMAGE_NAME}:${{ steps.meta.outputs.image_tag }}"
             echo "\`\`\`"
           } | tee -a $GITHUB_STEP_SUMMARY
